@@ -1,0 +1,771 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Runner</title>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #111318;
+    color: #eee;
+}
+
+button {
+    font: inherit;
+}
+
+.topbar {
+    height: 58px;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    background: #191c22;
+    border-bottom: 1px solid #30343d;
+}
+
+.logo {
+    font-size: 19px;
+    font-weight: bold;
+    margin-right: 25px;
+}
+
+.topbar button {
+    background: #252a33;
+    color: white;
+    border: 1px solid #3a404b;
+    border-radius: 7px;
+    padding: 8px 13px;
+    cursor: pointer;
+    margin-right: 8px;
+}
+
+.topbar button:hover {
+    background: #303641;
+}
+
+#projectName {
+    margin-left: auto;
+    color: #999;
+    font-size: 14px;
+}
+
+.main {
+    height: calc(100vh - 58px);
+    display: grid;
+    grid-template-columns: 260px 1fr 420px;
+}
+
+.sidebar {
+    background: #16191e;
+    border-right: 1px solid #30343d;
+    overflow: auto;
+}
+
+.sidebarTitle {
+    padding: 14px;
+    font-size: 12px;
+    color: #8e96a3;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#fileTree {
+    padding-bottom: 20px;
+}
+
+.file {
+    padding: 8px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+}
+
+.file:hover {
+    background: #252a33;
+}
+
+.file.selected {
+    background: #303641;
+}
+
+.center {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.editorHeader {
+    height: 43px;
+    background: #191c22;
+    border-bottom: 1px solid #30343d;
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    color: #aaa;
+    font-size: 13px;
+}
+
+#editor {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: 0;
+    outline: none;
+    padding: 16px;
+    background: #0e1014;
+    color: #ddd;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.right {
+    background: #111318;
+    border-left: 1px solid #30343d;
+    display: flex;
+    flex-direction: column;
+}
+
+.previewHeader {
+    height: 43px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    background: #191c22;
+    border-bottom: 1px solid #30343d;
+}
+
+.previewHeader span {
+    font-size: 13px;
+    color: #aaa;
+}
+
+.previewHeader button {
+    margin-left: auto;
+    background: #252a33;
+    color: white;
+    border: 1px solid #3a404b;
+    border-radius: 6px;
+    padding: 5px 9px;
+    cursor: pointer;
+}
+
+#preview {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    background: white;
+}
+
+.dropScreen {
+    position: fixed;
+    inset: 58px 0 0 0;
+    background: #111318;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.dropScreen.hidden {
+    display: none;
+}
+
+.dropBox {
+    width: min(650px, 90vw);
+    height: 350px;
+    border: 2px dashed #4b5360;
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #171a20;
+    transition: .15s;
+}
+
+.dropBox.dragging {
+    border-color: #8ba8ff;
+    background: #1d2433;
+}
+
+.dropTitle {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+.dropText {
+    color: #8f97a5;
+    margin-bottom: 20px;
+}
+
+.browse {
+    background: #5575d9;
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    padding: 11px 20px;
+    cursor: pointer;
+}
+
+.browse:hover {
+    background: #6685e8;
+}
+
+.status {
+    position: fixed;
+    left: 15px;
+    bottom: 15px;
+    background: #20242c;
+    border: 1px solid #363c47;
+    padding: 8px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    color: #aeb5c0;
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .main {
+        grid-template-columns: 210px 1fr;
+    }
+
+    .right {
+        display: none;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+    <div class="logo">File Runner</div>
+
+    <button onclick="openZip()">Open ZIP</button>
+    <button onclick="runProject()">Run</button>
+    <button onclick="downloadProject()">Download ZIP</button>
+
+    <div id="projectName">No project loaded</div>
+</div>
+
+<div class="main">
+
+    <aside class="sidebar">
+        <div class="sidebarTitle">Project Files</div>
+        <div id="fileTree"></div>
+    </aside>
+
+    <section class="center">
+        <div class="editorHeader">
+            <span id="currentFile">No file selected</span>
+        </div>
+
+        <textarea id="editor" spellcheck="false"
+            placeholder="Open a ZIP project to begin..."></textarea>
+    </section>
+
+    <section class="right">
+
+        <div class="previewHeader">
+            <span>Preview</span>
+            <button onclick="runProject()">Reload</button>
+        </div>
+
+        <iframe
+            id="preview"
+            sandbox="allow-scripts allow-forms allow-modals allow-popups">
+        </iframe>
+
+    </section>
+
+</div>
+
+<div class="dropScreen" id="dropScreen">
+
+    <div class="dropBox" id="dropBox">
+
+        <div class="dropTitle">File Runner</div>
+
+        <div class="dropText">
+            Drop a ZIP project here
+        </div>
+
+        <button class="browse" onclick="openZip()">
+            Browse for ZIP
+        </button>
+
+    </div>
+
+</div>
+
+<input
+    type="file"
+    id="zipInput"
+    accept=".zip,application/zip"
+    hidden
+>
+
+<div class="status" id="status"></div>
+
+<script>
+
+let zipObject = null;
+let files = {};
+let currentFile = null;
+
+const zipInput = document.getElementById("zipInput");
+const dropScreen = document.getElementById("dropScreen");
+const dropBox = document.getElementById("dropBox");
+const fileTree = document.getElementById("fileTree");
+const editor = document.getElementById("editor");
+const preview = document.getElementById("preview");
+const currentFileLabel = document.getElementById("currentFile");
+const projectName = document.getElementById("projectName");
+const statusBox = document.getElementById("status");
+
+function openZip() {
+    zipInput.click();
+}
+
+zipInput.addEventListener("change", async function() {
+
+    if (!this.files.length) return;
+
+    await loadZip(this.files[0]);
+
+});
+
+dropBox.addEventListener("dragover", function(e) {
+
+    e.preventDefault();
+
+    dropBox.classList.add("dragging");
+
+});
+
+dropBox.addEventListener("dragleave", function() {
+
+    dropBox.classList.remove("dragging");
+
+});
+
+dropBox.addEventListener("drop", async function(e) {
+
+    e.preventDefault();
+
+    dropBox.classList.remove("dragging");
+
+    const file = e.dataTransfer.files[0];
+
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+
+        alert("Please drop a ZIP file.");
+
+        return;
+
+    }
+
+    await loadZip(file);
+
+});
+
+async function loadZip(file) {
+
+    try {
+
+        showStatus("Extracting " + file.name + "...");
+
+        zipObject = await JSZip.loadAsync(file);
+
+        files = {};
+
+        const entries = Object.values(zipObject.files);
+
+        for (const entry of entries) {
+
+            if (entry.dir) continue;
+
+            files[entry.name] = await entry.async("string");
+
+        }
+
+        projectName.textContent = file.name;
+
+        dropScreen.classList.add("hidden");
+
+        renderFiles();
+
+        showStatus(
+            Object.keys(files).length +
+            " files loaded"
+        );
+
+        const index = findIndexFile();
+
+        if (index) {
+
+            selectFile(index);
+
+            runProject();
+
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert(
+            "Could not open this ZIP.\n\n" +
+            error.message
+        );
+
+        showStatus("Failed to open ZIP.");
+
+    }
+
+}
+
+function renderFiles() {
+
+    fileTree.innerHTML = "";
+
+    const names = Object.keys(files).sort();
+
+    for (const name of names) {
+
+        const div = document.createElement("div");
+
+        div.className = "file";
+
+        div.textContent = "▸ " + name;
+
+        div.title = name;
+
+        div.onclick = () => selectFile(name);
+
+        fileTree.appendChild(div);
+
+    }
+
+}
+
+function selectFile(name) {
+
+    if (!(name in files)) return;
+
+    currentFile = name;
+
+    currentFileLabel.textContent = name;
+
+    editor.value = files[name];
+
+    document.querySelectorAll(".file").forEach(el => {
+
+        el.classList.toggle(
+            "selected",
+            el.title === name
+        );
+
+    });
+
+}
+
+editor.addEventListener("input", function() {
+
+    if (!currentFile) return;
+
+    files[currentFile] = editor.value;
+
+});
+
+function findIndexFile() {
+
+    const names = Object.keys(files);
+
+    // Normal project
+
+    let index = names.find(
+        x => x.toLowerCase() === "index.html"
+    );
+
+    if (index) return index;
+
+    // Sometimes ZIPs contain a top-level folder.
+
+    index = names.find(
+        x => x.toLowerCase().endsWith("/index.html")
+    );
+
+    return index || null;
+
+}
+
+function getProjectRoot() {
+
+    const index = findIndexFile();
+
+    if (!index) return "";
+
+    const slash = index.lastIndexOf("/");
+
+    if (slash === -1) return "";
+
+    return index.substring(0, slash + 1);
+
+}
+
+function buildPreviewHTML() {
+
+    const index = findIndexFile();
+
+    if (!index) {
+
+        return `
+            <html>
+            <body style="
+                font-family:Arial;
+                padding:30px;
+            ">
+            <h2>No index.html found</h2>
+            <p>
+            This project does not appear to be a standard
+            web project.
+            </p>
+            </body>
+            </html>
+        `;
+
+    }
+
+    let html = files[index];
+
+    const root = getProjectRoot();
+
+    /*
+        Convert local project paths into data URLs.
+
+        This allows many small HTML projects to work
+        directly inside the iframe without a server.
+    */
+
+    html = html.replace(
+        /(<(?:img|script|link|source|video|audio)[^>]+(?:src|href)=["'])([^"']+)(["'])/gi,
+        function(match, before, path, after) {
+
+            if (
+                path.startsWith("http://") ||
+                path.startsWith("https://") ||
+                path.startsWith("data:") ||
+                path.startsWith("#")
+            ) {
+                return match;
+            }
+
+            let normalized = normalizePath(root + path);
+
+            if (files[normalized]) {
+
+                const mime = getMimeType(normalized);
+
+                const encoded = btoa(
+                    unescape(
+                        encodeURIComponent(
+                            files[normalized]
+                        )
+                    )
+                );
+
+                return (
+                    before +
+                    "data:" +
+                    mime +
+                    ";base64," +
+                    encoded +
+                    after
+                );
+
+            }
+
+            return match;
+
+        }
+    );
+
+    return html;
+
+}
+
+function normalizePath(path) {
+
+    const parts = path.split("/");
+
+    const result = [];
+
+    for (const part of parts) {
+
+        if (!part || part === ".") continue;
+
+        if (part === "..") {
+
+            result.pop();
+
+        } else {
+
+            result.push(part);
+
+        }
+
+    }
+
+    return result.join("/");
+
+}
+
+function getMimeType(name) {
+
+    const ext = name
+        .split(".")
+        .pop()
+        .toLowerCase();
+
+    const types = {
+
+        html: "text/html",
+        css: "text/css",
+        js: "text/javascript",
+        json: "application/json",
+        svg: "image/svg+xml",
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        gif: "image/gif",
+        webp: "image/webp",
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+        ogg: "audio/ogg",
+        mp4: "video/mp4",
+        webm: "video/webm"
+
+    };
+
+    return types[ext] || "text/plain";
+
+}
+
+function runProject() {
+
+    if (!Object.keys(files).length) {
+
+        alert("Open a ZIP project first.");
+
+        return;
+
+    }
+
+    const index = findIndexFile();
+
+    if (!index) {
+
+        preview.srcdoc = `
+            <html>
+            <body style="
+                font-family:Arial;
+                padding:30px;
+            ">
+            <h2>Cannot run project</h2>
+            <p>No index.html was found.</p>
+            </body>
+            </html>
+        `;
+
+        return;
+
+    }
+
+    showStatus("Starting project...");
+
+    preview.srcdoc = buildPreviewHTML();
+
+    setTimeout(() => {
+
+        showStatus("Project running.");
+
+    }, 400);
+
+}
+
+async function downloadProject() {
+
+    if (!Object.keys(files).length) {
+
+        alert("There is no project loaded.");
+
+        return;
+
+    }
+
+    const zip = new JSZip();
+
+    for (const [name, content] of Object.entries(files)) {
+
+        zip.file(name, content);
+
+    }
+
+    const blob = await zip.generateAsync({
+        type: "blob"
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+
+    a.href = url;
+
+    a.download = "project.zip";
+
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+}
+
+function showStatus(message) {
+
+    statusBox.textContent = message;
+
+    statusBox.style.display = "block";
+
+    clearTimeout(showStatus.timer);
+
+    showStatus.timer = setTimeout(() => {
+
+        statusBox.style.display = "none";
+
+    }, 3000);
+
+}
+
+</script>
+
+</body>
+</html>
+```
